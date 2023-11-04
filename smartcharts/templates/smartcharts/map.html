@@ -1,0 +1,127 @@
+{% block map %}
+{% endblock map %}
+
+{% block mapjs %}
+<script type="text/javascript">
+// Make the header map
+var map;
+d3.json(CR_API_URL + '/1.0/geo/tiger{{ ACS_YEAR_NUMERIC }}/{{ geography.this.full_geoid }}?geom=true', function(error, json) {
+  if (error) return console.warn(error);
+  var allowMapDrag = (browserWidth > 480) ? true : false;
+
+  // draw a geom
+  map = L.map('slippy-map', {
+      scrollWheelZoom: false,
+      zoomControl: false,
+      doubleClickZoom: false,
+      boxZoom: false,
+      keyboard: false,
+      dragging: allowMapDrag,
+      touchZoom: allowMapDrag
+  });
+
+  // set a tile layer
+  var tiles = L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/toner-lite/{z}/{x}/{y}.png', { attribution: 'Map tiles by <a href=\"http://stamen.com\">Stamen Design</a>, under <a href=\"https://creativecommons.org/licenses/by/3.0/\" target=\"_blank\">CC BY 3.0</a>. Data by <a href=\"http://www.openstreetmap.org/\" target=\"_blank\">OpenStreetMap</a>, under ODbL.'
+  });
+
+  // add these tiles to our map
+  map.addLayer(tiles);
+
+  if (allowMapDrag) {
+      map.addControl(new L.Control.Zoom({
+          position: 'topright'
+      }));
+  }
+
+  if (CensusReporter.SummaryLevelLayer && thisSumlev !== "010") {
+      var defaultStyle = {
+              "clickable": true,
+              "color": "#76AFF2",
+              "fillColor": "#f1f1f2",
+              "weight": 1,
+              "opacity": 0.5,
+              "fillOpacity": 0.3,
+          },
+      geojsonTileLayer = new CensusReporter.SummaryLevelLayer(thisSumlev, {},
+          {
+          style: defaultStyle,
+          onEachFeature: function(feature, layer) {
+              if (feature.properties.geoid == thisGeoID)
+                  return;
+
+              // filter out non-Michingan results
+              if (feature.properties.name.search(', MI') != -1 || feature.properties.geoid.search('86000US48') != -1 || feature.properties.geoid.search('86000US49') != -1) {
+                  layer.bindLabel(feature.properties.name, {direction: 'auto'});
+                  layer.on('mouseover', function() {
+                      layer.setStyle({
+                          "weight": 2,
+                          "fillOpacity": 0.4,
+                          "fillColor": "#76AFF2",
+                      });
+                  });
+                  layer.on('mouseout', function() {
+                      layer.setStyle(defaultStyle);
+                  });
+                  layer.on('click', function() {
+                      // add spinner to page load
+                      var spinnerTarget = document.getElementById("body-spinner");
+                      if (!spinnerTarget) {
+                          $('body').append('<div id="body-spinner"></div>');
+                          spinnerTarget = document.getElementById('body-spinner');
+                      }
+                      spinner.spin(spinnerTarget);
+                      window.location.href = '/profiles/' + feature.properties.geoid + '-' + slugify(feature.properties.name);
+                  });
+              } else {
+                  var invisibleStyle = {
+                      "clickable": false,
+                      "color": "#fff",
+                      "fillColor": "#fff",
+                      "weight": 0,
+                      "opacity": 0,
+                      "fillOpacity": 0,
+                  }
+                  layer.setStyle(invisibleStyle);
+              }
+
+          }
+      });
+      map.addLayer(geojsonTileLayer);
+  }
+
+  var featureLayer = L.geoJson(json, {
+      style: {
+          "fillColor": "#A975D7",
+          "fillOpacity": 0.5,
+          "color": "#686867",
+          "weight": 2,
+          "clickable": false
+      }
+  });
+  map.addLayer(featureLayer);
+  var objBounds = featureLayer.getBounds();
+
+  if (thisSumlev === "010") {
+      objBounds = L.latLngBounds(L.latLng(24.396, -124.849), L.latLng(49.384, -66.885));
+  }
+
+  if (browserWidth > 768) {
+      var z;
+      for(z = 16; z > 2; z--) {
+          var swPix = map.project(objBounds.getSouthWest(), z),
+              nePix = map.project(objBounds.getNorthEast(), z),
+              pixWidth = Math.abs(nePix.x - swPix.x),
+              pixHeight = Math.abs(nePix.y - swPix.y);
+          if (pixWidth <  500 && pixHeight < 400) {
+              break;
+          }
+      }
+
+      map.setView(objBounds.getCenter(), z);
+      map.panBy([-270, 0], {animate: false});
+  } else {
+      map.fitBounds(objBounds);
+  }
+})
+</script>
+{% endblock mapjs %}

@@ -1,0 +1,60 @@
+{% load humanize madlibs comparatives %}
+{% if not stat_wrapper == 'false' %}<a class="stat {{ stat_type }}{% if wrapper_class %} {{ wrapper_class }}{% endif %}">{% endif %}
+    <span class="{% if stat_class %}{{ stat_class }}{% else %}primary{% endif %}">
+    <span class="name"><h3 class="chart-title">{{ stat_title }}</h3></span>
+    <!-- Dropdown -->
+    <div class='select'>
+        <select name="dropdown_{{ stat_type }}" id="dropdown_{{ stat_type }}">
+            {% for row in stat %}
+                <option value="{{ row.metadata.id }}">{{ row.metadata.year }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    {% if stat_type == 'ownership' %}
+        <span class="content">
+            {% for row in stat %}
+                <div id="{{ row.metadata.id }}" class="elements_{{ stat_type }}" {% if forloop.first %}style="display: block;"{% else %}style="display: none;"{% endif %} >
+                    <div><strong>Owner Name:</strong> {{ row.values.this }}</div>
+                    <div><strong>Address:</strong> {{ row.metadata.address }}</div>
+                    <div><strong>City & State:</strong> {{ row.metadata.city }}, {{ row.metadata.state }}</div>
+                    <div><strong>Zip Code:</strong> {{ row.metadata.zip }}</div>
+                </div>
+            {% endfor %}
+
+        </span>
+    {% endif %}
+
+    {% if stat_type == 'blight_violations' %}
+        <span class="content">
+            {% for row in stat %}
+                <div id="{{ row.metadata.id }}" class="elements_{{ stat_type }}" {% if forloop.first %}style="display: block;"{% else %}style="display: none;"{% endif %} >
+                    <div><strong>Ticket Number:</strong> {{ row.values.this }}</div>
+                    <div><strong>Agency:</strong> {{ row.metadata.agency }}</div>
+                    <div><strong>Code:</strong> {{ row.metadata.code }}</div>
+                    <div><strong>Description:</strong> {{ row.metadata.description }}</div>
+                    <div><strong>Fine Amount:</strong> ${{ row.metadata.fine_amount|floatformat:"0"|intcomma }}</div>
+                    <div><strong>Disposition:</strong> {{ row.metadata.disposition }}</div>
+                    <div><strong>Amount Balance:</strong> ${{ row.metadata.amount_balance|floatformat:"0"|intcomma }}</div>
+                </div>
+            {% endfor %}
+
+        </span>
+    {% endif %}
+
+{% if not stat_wrapper == 'false' %}</a>{% endif %}
+
+
+<script>
+$(document).ready(function(){
+    $('.select').on('change','#dropdown_{{ stat_type }}',function(){
+        $(this).find("option:selected").each(function(){
+            $(".elements_{{ stat_type }}").hide();
+            var optionValue = $(this).attr("value");
+            if(optionValue){
+                $("#" + optionValue).show();
+            }
+        });
+    });
+});
+</script>

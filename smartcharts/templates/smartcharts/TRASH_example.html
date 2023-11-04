@@ -1,0 +1,518 @@
+{% extends 'smartcharts/_base_profile.html' %}{% load humanize madlibs %}
+
+{% block head_title %}{% firstof geography.full_name geography.short_name %} - {{ block.super }}{% endblock %}
+{% block head_meta_description %}Census data for {{ geography.full_name }} (pop. {{ geography.total_population|intcomma }}), including age, race, sex, income, poverty, marital status, education and more.{% endblock %}
+
+{% block head_facebook_tags %}
+        <meta property="og:title" content="Census profile: {% firstof geography.full_name geography.short_name %}" />
+        <meta property="og:site_name" content="State of the Detroit Child" />
+        <meta property="og:url" content="{{ request.build_absolute_uri }}" />
+        <meta property="og:description" content="Census data for {{ geography.full_name }} (pop. {{ geography.total_population|intcomma }}), including age, race, sex, income, poverty, marital status, education and more." />
+        <meta property="og:type" content="article" />
+        {#}<meta property="og:image" content="" />{#}
+{% endblock %}
+
+{% block head_twitter_tags %}
+        <meta name="twitter:card" content="summary">
+        <meta name="twitter:site" content="@d3detroit">
+        <meta name="twitter:creator" content="@d3detroit">
+        <meta name="twitter:title" content="Census profile: {% firstof geography.full_name geography.short_name %}">
+        <meta name="twitter:description" content="Census data for {{ geography.full_name }} (pop. {{ geography.total_population|intcomma }}), including age, race, sex, income, poverty, marital status, education and more.">
+        {#}<meta name="twitter:image" content="">{#}
+{% endblock %}
+
+{% block head_css_extra %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@0.7.2/dist/leaflet.css" />
+<link rel="stylesheet" href="{{ STATIC_URL }}css/vendor/leaflet.label.css" />
+<link rel="stylesheet" href="{{ STATIC_URL }}css/print.css">
+{% endblock %}
+
+{% block head_javascript_extra %}
+<script src="https://unpkg.com/leaflet@0.7.2/dist/leaflet.js"></script>
+<script src="{{ STATIC_URL }}js/vendor/leaflet.label.js"></script>
+{% endblock %}
+
+{% block body_id %}profile{% endblock %}
+
+{% block header_content %}
+<div id="cover-map" class="clearfix">
+    <div id="slippy-map"></div>
+    <div id="cover-profile" class="wrapper">
+        <article class="clearfix column-half">
+            <header id="header-box" class="column-full">
+                <h1 class="title">{% firstof geography.full_name geography.short_name %}</h1>
+                {% if geography.sumlevel != '010' and geography.sumlevel != '040' %}
+                <p class="caption"></p>
+                {% endif %}
+            </header>
+            <div class="column-half">
+                <div class="stat">
+                    <span class="primary">
+                        <span class="value">{{ geography.total_population|intcomma }}</span>
+                        <span class="name">Population</span>
+                    </span>
+                </div>
+            </div>
+            {% if geography.square_miles or geography.population_density %}
+            <div class="column-half">
+                <div class="stat">
+                    <span class="secondary">
+                        <span class="value">{% if geography.square_miles < .1 %}{{ geography.square_miles|floatformat:"3" }}{% else %}{{ geography.square_miles|floatformat|intcomma }}{% endif %}</span>
+                        <span class="name"> approximate square miles</span>
+                    </span>
+                    <span class="secondary">
+                        <span class="value">{{ geography.population_density|floatformat|intcomma }}</span>
+                        <span class="name"> people per square mile</span>
+                    </span>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if geography.show_extra_links %}
+                {% include "smartcharts/_blocks/_header_extra_links.html" %}
+            {% endif %}
+
+            <div class="column-full">
+                <p class="caption"><strong>Census data:</strong> {{ release }} unless noted</p>
+            </div>
+        </article>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<section class="clearfix" id="query-topic-picker">
+    <h2>Find data for this place</h2>
+    <div class="typeahead-container">
+        <input name="topic_select" id="topic-select" type="text" placeholder="Search by table or column name..." autocomplete="off">
+    </div>
+</section>
+
+<p class="explain">Interact with charts and statistics for <span class="glossary-term" data-keyword="margin-of-error">margins of error</span> and additional information.</p>
+{% %}
+
+{% endblock %}
+
+{% block sticky_buttons %}
+<!-- Add sticky buttons for time series vers one year views -->
+<div class="sticky-time-series-buttons">
+    <a id="one-year" class='action-button active' href="#">One year</a>
+    <a id="over-time" class='action-button' href="#">Over time</a>
+</div>
+{% endblock %}
+
+
+{% block body_javascript_extra %}{{ block.super }}
+<script type="text/javascript">
+    var API_URL = '{{ API_URL }}';
+    var ACS_YEAR_NUMERIC = '{{ ACS_YEAR_NUMERIC }}';
+</script>
+<script src="{{ STATIC_URL }}js/charts.js"></script>
+<!--[if gt IE 9]><!-->
+<script src="{{ STATIC_URL }}js/cr-leaflet.js"></script>
+<!--<![endif]-->
+<script type="text/javascript">
+  // Allow Ajax POST requests to bypass Django's CSRF check
+  // https://docs.djangoproject.com/en/dev/ref/contrib/csrf/#ajax
+  var csrftoken = '{{ csrf_token }}';
+  function csrfSafeMethod(method) {
+      // these HTTP methods do not require CSRF protection
+      return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+  }
+  $.ajaxSetup({
+      beforeSend: function(xhr, settings) {
+          if (!csrfSafeMethod(settings.type) && !this.crossDomain) {
+              xhr.setRequestHeader("X-CSRFToken", csrftoken);
+          }
+      }
+  });
+
+  // Make the header map
+  var map;
+  d3.json(CR_API_URL + '/1.0/geo/tiger{{ ACS_YEAR_NUMERIC }}/{{ geography.this.full_geoid }}?geom=true', function(error, json) {
+      if (error) return console.warn(error);
+      var allowMapDrag = (browserWidth > 480) ? true : false;
+
+      // draw a geom
+      map = L.map('slippy-map', {
+          scrollWheelZoom: false,
+          zoomControl: false,
+          doubleClickZoom: false,
+          boxZoom: false,
+          keyboard: false,
+          dragging: allowMapDrag,
+          touchZoom: allowMapDrag
+      });
+
+      // set a tile layer
+      var tiles = L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/toner-lite/{z}/{x}/{y}.png', { attribution: 'Map tiles by <a href=\"http://stamen.com\">Stamen Design</a>, under <a href=\"https://creativecommons.org/licenses/by/3.0/\" target=\"_blank\">CC BY 3.0</a>. Data by <a href=\"http://www.openstreetmap.org/\" target=\"_blank\">OpenStreetMap</a>, under ODbL.'
+      });
+
+      // add these tiles to our map
+      map.addLayer(tiles);
+
+      if (allowMapDrag) {
+          map.addControl(new L.Control.Zoom({
+              position: 'topright'
+          }));
+      }
+
+      if (CensusReporter.SummaryLevelLayer && thisSumlev !== "010") {
+          var defaultStyle = {
+                  "clickable": true,
+                  "color": "#76AFF2",
+                  "fillColor": "#f1f1f2",
+                  "weight": 1,
+                  "opacity": 0.5,
+                  "fillOpacity": 0.3,
+              },
+          geojsonTileLayer = new CensusReporter.SummaryLevelLayer(thisSumlev, {},
+              {
+              style: defaultStyle,
+              onEachFeature: function(feature, layer) {
+                  if (feature.properties.geoid == thisGeoID)
+                      return;
+
+                  // filter out non-Michingan results
+                  if (feature.properties.name.search(', MI') != -1 || feature.properties.geoid.search('86000US48') != -1 || feature.properties.geoid.search('86000US49') != -1) {
+                      layer.bindLabel(feature.properties.name, {direction: 'auto'});
+                      layer.on('mouseover', function() {
+                          layer.setStyle({
+                              "weight": 2,
+                              "fillOpacity": 0.4,
+                              "fillColor": "#76AFF2",
+                          });
+                      });
+                      layer.on('mouseout', function() {
+                          layer.setStyle(defaultStyle);
+                      });
+                      layer.on('click', function() {
+                          // add spinner to page load
+                          var spinnerTarget = document.getElementById("body-spinner");
+                          if (!spinnerTarget) {
+                              $('body').append('<div id="body-spinner"></div>');
+                              spinnerTarget = document.getElementById('body-spinner');
+                          }
+                          spinner.spin(spinnerTarget);
+                          window.location.href = '/profiles/' + feature.properties.geoid + '-' + slugify(feature.properties.name);
+                      });
+                  } else {
+                      var invisibleStyle = {
+                          "clickable": false,
+                          "color": "#fff",
+                          "fillColor": "#fff",
+                          "weight": 0,
+                          "opacity": 0,
+                          "fillOpacity": 0,
+                      }
+                      layer.setStyle(invisibleStyle);
+                  }
+
+              }
+          });
+          map.addLayer(geojsonTileLayer);
+      }
+
+      var featureLayer = L.geoJson(json, {
+          style: {
+              "fillColor": "#A975D7",
+              "fillOpacity": 0.5,
+              "color": "#686867",
+              "weight": 2,
+              "clickable": false
+          }
+      });
+      map.addLayer(featureLayer);
+      var objBounds = featureLayer.getBounds();
+
+      if (thisSumlev === "010") {
+          objBounds = L.latLngBounds(L.latLng(24.396, -124.849), L.latLng(49.384, -66.885));
+      }
+
+      if (browserWidth > 768) {
+          var z;
+          for(z = 16; z > 2; z--) {
+              var swPix = map.project(objBounds.getSouthWest(), z),
+                  nePix = map.project(objBounds.getNorthEast(), z),
+                  pixWidth = Math.abs(nePix.x - swPix.x),
+                  pixHeight = Math.abs(nePix.y - swPix.y);
+              if (pixWidth <  500 && pixHeight < 400) {
+                  break;
+              }
+          }
+
+          map.setView(objBounds.getCenter(), z);
+          map.panBy([-270, 0], {animate: false});
+      } else {
+          map.fitBounds(objBounds);
+      }
+  })
+
+  // Create all the charts
+  var Charts = {},
+      chartContainers = $('[id^=chart-]'),
+      defaultDataRelease = '{{ geography.census_release }}',
+      releases = [defaultDataRelease],
+      profileData = {{ profile_data_json }},
+      latestWorkingRelease = '{{ acs_year }}';
+
+  var gracefulType = function(chartType) {
+      // convert certain chart types to more readable versions at narrow widths
+      if (browserWidth <= 640) {
+          if (chartType == 'column' || chartType == 'histogram') {
+              return 'bar'
+          } else if (chartType == 'grouped_column') {
+              return 'grouped_bar'
+          }
+      }
+      return chartType
+  }
+
+  var makeCharts = function() {
+      $.each(chartContainers, function(i, obj) {
+          $(obj).empty();
+          var chartID = $(this).prop('id'),
+              chartDataKey = chartID.replace('chart-','').replace('alt-',''),
+              chartDataID = chartDataKey.split('-'),
+              chartType = gracefulType(chartDataID[0]),
+              chartData = profileData[chartDataID[1]],
+              chartChartTitle = $(this).data('chart-title'),
+              chartChartShowYAxis = $(this).data('chart-show-y-axis'),
+              chartInitialSort = $(this).data('initial-sort'),
+              chartStatType = $(this).data('stat-type'),
+              chartQualifier = $(this).data('qualifier') || null,
+              geographyData = profileData['geography'],
+              chartRelease = latestWorkingRelease;
+
+          // allow arbitrary nesting in API data structure
+          var drilldown = chartDataID.length - 1;
+          if (drilldown >= 2) {
+              for (var n = 2; n <= drilldown; n++) {
+                  chartData = chartData[chartDataID[n]]
+              }
+          }
+
+          // determine whether data point is from anything other
+          // than the primary ACS release for this page
+          //console.log(chartData);
+          for (var key in chartData) if (chartData.hasOwnProperty(key)) break;
+          //console.log(key);
+          var thisRelease = chartData[key]['acs_release'],
+              noteRelease = (thisRelease != defaultDataRelease) ? thisRelease + ' data' : null;
+
+          if (thisRelease != defaultDataRelease) {
+              chartRelease = 'd3_present';
+          }
+
+          chartQualifier = Array(chartQualifier, noteRelease)
+                  .filter(function(n) { return n }).join('; ');
+
+          var chartstuff = {
+              chartContainer: chartID,
+              chartDataKey: chartDataKey,
+              chartType: chartType,
+              chartHeight: 160,
+              chartData: chartData,
+              chartQualifier: chartQualifier,
+              chartChartTitle: chartChartTitle,
+              chartInitialSort: chartInitialSort,
+              chartStatType: chartStatType,
+              geographyData: geographyData,
+              chartColorScale: 'Kat2',
+              release: chartRelease
+          }
+          try {
+              Charts[i] = Chart(chartstuff);
+          } catch(e) {
+              console.log(e);
+              console.log("Error making chart " + chartID)
+              console.log(chartstuff);
+          }
+
+          // build array of releases used on this page for citations
+          if (noteRelease) { releases.push(noteRelease) }
+      });
+  }
+  makeCharts();
+
+  // listen for resize, redraw charts to new dimensions
+  var lazyRedrawCharts = _.debounce(function() {
+      window.browserWidth = document.documentElement.clientWidth;
+      window.browserHeight = document.documentElement.clientHeight;
+      makeCharts();
+  }, 50);
+  $(window).resize(lazyRedrawCharts);
+
+  // Add note to rows with flagged MOE
+  var flaggedMOE = $('.stat-row sup'),
+      daggerNote = '<p><sup>&dagger;</sup> Margin of error is at least 10 percent of the total value. Take care with this statistic.</p>';
+
+  flaggedMOE.closest('.stat-row').find('aside').html(daggerNote);
+
+  // Enable the single-table topic picker
+  var thisSumlev = '{{ geography.this.sumlevel }}',
+      thisGeoShortName = '{{ geography.this.short_name }}',
+      thisGeoID = '{{ geography.this.full_geoid }}',
+      placeGeoID = '{{ geography.parents.place.full_geoid }}',
+      CBSAGeoID = '{{ geography.parents.CBSA.full_geoid }}',
+      countyGeoID = '{{ geography.parents.county.full_geoid }}',
+      stateGeoID = '{{ geography.parents.state.full_geoid }}',
+      nationGeoID = '{{ geography.parents.nation.full_geoid }}';
+
+  // Update the header's list of parent geographies
+  var parentLinkContainer = $('#header-box .caption'),
+      parentLinksPrefix = '<span class="glossary-term">{{ geography.this.sumlevel_name|capfirst }}</span> in: ',
+      parentGeoAPI = CR_API_URL + '/1.0/geo/tiger{{ ACS_YEAR_NUMERIC }}/' + thisGeoID + '/parents',
+      tilesGeoAPI = 'https://sdcapi.datadrivendetroit.org/1.0/geo/tiger{{ ACS_YEAR_NUMERIC }}/tiles/' + thisSumlev + '/{z}/{x}/{y}.geojson';
+
+  // for touch devices, still allow context toggle
+  $('.stat-row').on('click', '.stat', function() {
+      $(this).find('.context').toggle();
+  })
+
+  if (!!parentLinkContainer) {
+      // set up the listener for trigger to reveal hidden groups
+      $('#header-box').on('click', '.link-reveal', function() {
+          $(this).hide().next('.hidden').show();
+          return false;
+      });
+
+      // hit the /parents API endpoint
+      $.getJSON(parentGeoAPI)
+          .done(function(results) {
+              console.log(results);
+              // filter out 'this' from the parents
+              // filter out any parents further up from state
+              var parents = _.reject(results['parents'], function(p) {
+                  return p.relation === 'this' || p.relation === 'place' || p.relation === 'nation';
+              });
+
+
+              // list of unique parent sumlev types, maintaining order
+              var parentRelations = _.uniq(_.pluck(parents, 'sumlevel'));
+              // collect parents into individual sumlev groups
+              var parentGroups = _.groupBy(parents, function(d) {
+                  return d.sumlevel;
+              });
+              // for each parent sumlev type ...
+              var parentLinkSets = _.map(parentRelations, function(r) {
+                  // ... compile a set of links to individual profile pages
+                  var parentLinkSet = _.map(parentGroups[r], function(v, k) {
+                      return '<a href="/profiles/' + v.geoid + '-' + slugify(v.display_name) + '/">' + v.display_name + '</a>';
+                  });
+                  var numParents = parentLinkSet.length;
+                  // if more than one of a sumlev type, group behind reveal link
+                  if (numParents > 1) {
+                      return '<a href="#" class="link-reveal">'+numParents+' '+ sumlevMap[r]['plural'] +'</a><span class="hidden">'+parentLinkSet.join(', ')+'</span>';
+                  } else {
+                      // just one of this sumlev type, so add it to list
+                      return parentLinkSet;
+                  }
+              })
+              // push the whole thing into the header box ... thingy
+              parentLinkContainer.html(parentLinksPrefix + parentLinkSets.join(', '));
+              $('body').trigger('glossaryUpdate', parentLinkContainer);
+          });
+  }
+
+  // add citations for each data release used for page
+  /*
+  if (releases.length > 1) {
+      var explain = '<p class="explain"><em>This profile displays data from more than one ACS release. Charts not derived from ' + defaultDataRelease + ' data are noted with an *.</em></p>'
+      $('.content-container').append(explain);
+  }
+  */
+
+  // polyfill for String.prototype.startsWith
+  if (!String.prototype.startsWith) {
+      String.prototype.startsWith = function(searchString, position){
+        position = position || 0;
+        return this.substr(position, searchString.length) === searchString;
+    };
+  }
+
+  var makeCitation = function(year, release) {
+  	if (release.startsWith('D3 Open Data Portal')) {
+  		var citation = '<p class="explain"><strong>Citation:</strong> ' + release +
+  	    '. Retrieved from <em>State of the Detroit Child Profile page for {% firstof geography.this.full_name geography.this.short_name %}</em> <a href="{{ request.build_absolute_uri }}">{{ request.build_absolute_uri }}</a></p>';
+  	} else {
+  		var citation = '<p class="explain"><strong>Citation:</strong> ' +
+  	    'U.S. Census Bureau (<span id="cite-release-year">' + year + '</span>). ' +
+  	    '<em>American Community Survey <span id="cite-release">' + release + '</span> estimates.</em> ' +
+  	    'Retrieved from <em>State of the Detroit Child Profile page for {% firstof geography.this.full_name geography.this.short_name %}</em> <a href="{{ request.build_absolute_uri }}">{{ request.build_absolute_uri }}</a></p>';
+  	}
+
+
+      $('.content-container').append(citation);
+  }
+
+
+  var acs_citation = 0;
+  var d3_citation = 0;
+
+  $.each($.unique(releases), function(i, v) {
+
+      var bits = v.split(" "),
+          year = bits[1],
+          release = bits[2];
+
+      // handle exception for D3 open data portal
+      // TO DO: update releases to add year for D3 content
+      if ((year == 'Open' || year == 'data') && d3_citation == 0) {
+      	year = '2020';
+      	release = 'D3 Open Data Portal'
+          makeCitation(year, release);
+          d3_citation = 1;
+      }
+
+      if (acs_citation == 0 && bits[0] == 'ACS') {
+          makeCitation(year, release);
+          acs_citation = 1;
+      }
+
+
+  });
+
+  Glossary.init("{% url 'glossary' %}",".glossary-term");
+
+  // set up scroll listener to change the linked location to multi year data
+  $(function () {
+      let currentHash = '#';
+      const currentURL = window.location.href.split('profiles');
+      const minusHash = currentURL[1].split('#');
+      $('#over-time').attr("href", currentURL[0] + "time-series-profiles" + minusHash[0]);
+      $(document).scroll(function () {
+          $('.section').each(function () {
+              const top = window.pageYOffset;
+              const distance = top - $(this).offset().top;
+              const hash = $(this).attr('href');
+              if (distance < 30 && distance > -30 && currentHash != hash) {
+                  $('#over-time').attr("href", currentURL[0] + "time-series-profiles" + minusHash[0] + hash);
+                  currentHash = hash;
+              }
+          });
+      });
+  });
+
+  function print_button() {
+      map.panBy(new L.Point(400, 0), {animate: false});
+      window.print();
+      map.panBy(new L.Point(-400, 0), {animate: false});
+  }
+</script>
+<script src="{{ STATIC_URL }}js/profile.topic.picker.js"></script>
+{% endblock %}
+
+{% comment %}
+{% for section in profile %}
+    <h2>{{ section.title }}</h2>
+    <p>{{ section.factoid_one.stat.title }}</p>
+    <p>{{ section.factoid_two.stat.title }}</p>
+    {% for row in section.rows %}
+        <h3>{{ row.title }}</h3>
+        {% for design in row.designs %}
+            <h4>{{ design }}</h4>
+        {% endfor%}
+    {% endfor%}
+{% endfor %}
+{% endcomment %}

@@ -1,0 +1,156 @@
+{% load humanize madlibs %} 
+{% for section_name, section in sections.items %}
+<article id="" class="clearfix">
+    <header class="section-contents">
+        <h1>{{ section.title }}</h1>
+        <div class="summary">
+          <!--
+          <h3>{{ section.factoid_one.stat.this|floatformat|intcomma|cut:".0" }}total children, with {{ demographics.child_age.distribution_by_category.percent_under_5.values.this|floatformat|intcomma|cut:".0" }}% under age 5</h3>
+          <h3 class="divider">|</h3>
+          <h3>{{ families.child_care.child_care_capacity.values.this|floatformat|intcomma|cut:".0" }} child care capacity</h3>
+          -->
+        </div>
+    </header>
+    <div class="section-container">
+        {% for row_name, row in section.rows.items %}
+        <section class="clearfix stat-row">
+            <div class="section-intro">
+                <aside>
+                <h2 class="header-for-columns">
+                    <a class="permalink section" href="#youth-population" id="youth-population" title="Permalink">
+                        {{ row.title }}
+                    </a> 
+                    <a class="permalink" href="#" title="Back to top">
+                        <i class="fa fa-arrow-circle-up" aria-hidden="true"></i>
+                    </a>
+                </h2>
+                </aside>
+            </div>
+                {% for design_name, design in row.designs.items %}
+                    {% if design.metadata.chart_type == 'stat_list' %}     
+                    <div class="{{ design.metadata.column_width }}">
+                        {% include 'smartcharts/_blocks/_stat_list.html' with stat=design.stat stat_type=design.metadata.stat_type %}
+                    </div>
+                    {% elif design.metadata.chart_type == 'chart-grouped_column' %}
+                        <div class="{{ design.metadata.column_width }}" id="{{ design.metadata.chart_type }}-sections-{{ section_name }}-rows-{{ row_name }}-designs-{{ design_name }}" data-stat-type="scaled-percentage" data-chart-title="{{ design.metadata.name }}" data-initial-sort="-value" data-qualifier="Universe: {{ design.metadata.universe }}"></div>
+                    {% elif design.metadata.chart_type == 'chart-column' %}
+                        <div class="{{ design.metadata.column_width }}">
+                            <div id="{{ design.metadata.chart_type }}-sections-{{ section_name }}-rows-{{ row_name }}-designs-{{ design_name }}" data-stat-type="scaled-percentage" data-chart-title="{{ design.metadata.name }}" data-initial-sort="-value" data-qualifier="Universe: {{ design.metadata.universe }}"></div>
+                        </div>
+                    {% else %}
+                        <div class="{{ design.metadata.column_width }}">
+                            <div id="{{ design.metadata.chart_type }}-sections-{{ section_name }}-rows-{{ row_name }}-designs-{{ design_name }}" data-stat-type="percentage" data-chart-title="{{ design.metadata.name }}" data-initial-sort="-value" data-qualifier="Universe: {{ design.metadata.universe }}"></div>
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            </section>
+        {% endfor %}
+    </div>
+</article>
+{% endfor %}
+<script>var ACS_YEAR_NUMERIC = 2021;</script>
+<script type="text/javascript">CR_API_URL = 'https://sdcapi.datadrivendetroit.org';</script>
+<script type="text/javascript">FREE_TEXT_SEARCH_API_URL = 'https://api.censusreporter.org';</script>
+<script src="{{ STATIC_URL }}js/app.js"></script>
+<script src="{{ STATIC_URL }}js/glossary.js"></script>
+<script src="{{ STATIC_URL }}js/widget.geo.select.js"></script>
+<script src="{{ STATIC_URL }}js/charts.js"></script>
+<script src="{{ STATIC_URL }}js/cr-leaflet.js"></script>
+<script type="text/javascript">
+  // Create all the charts
+  var Charts = {},
+      chartContainers = $('[id^=chart-]'),
+      defaultDataRelease = '{{ geography.census_release }}',
+      releases = [defaultDataRelease],
+      profileData = {{ profile_data_json }},
+      latestWorkingRelease = '{{ acs_year }}';
+
+  var gracefulType = function(chartType) {
+      // convert certain chart types to more readable versions at narrow widths
+      if (browserWidth <= 640) {
+          if (chartType == 'column' || chartType == 'histogram') {
+              return 'bar'
+          } else if (chartType == 'grouped_column') {
+              return 'grouped_bar'
+          }
+      }
+      return chartType
+  }
+
+  var makeCharts = function() {
+      $.each(chartContainers, function(i, obj) {
+          $(obj).empty();
+          var chartID = $(this).prop('id'),
+              chartDataKey = chartID.replace('chart-','').replace('alt-',''),
+              chartDataID = chartDataKey.split('-'),
+              chartType = gracefulType(chartDataID[0]),
+              chartData = profileData[chartDataID[1]],
+              chartChartTitle = $(this).data('chart-title'),
+              chartChartShowYAxis = $(this).data('chart-show-y-axis'),
+              chartInitialSort = $(this).data('initial-sort'),
+              chartStatType = $(this).data('stat-type'),
+              chartQualifier = $(this).data('qualifier') || null,
+              geographyData = profileData['geography'],
+              chartRelease = latestWorkingRelease;
+
+          // allow arbitrary nesting in API data structure
+          var drilldown = chartDataID.length - 1;
+          if (drilldown >= 2) {
+              for (var n = 2; n <= drilldown; n++) {
+                  chartData = chartData[chartDataID[n]]
+              }
+          }
+
+          // determine whether data point is from anything other
+          // than the primary ACS release for this page
+          //console.log(chartData);
+          for (var key in chartData) if (chartData.hasOwnProperty(key)) break;
+          //console.log(key);
+          var thisRelease = chartData[key]['acs_release'],
+              noteRelease = (thisRelease != defaultDataRelease) ? thisRelease + ' data' : null;
+
+          if (thisRelease != defaultDataRelease) {
+              chartRelease = 'd3_present';
+          }
+
+          chartQualifier = Array(chartQualifier, noteRelease)
+                  .filter(function(n) { return n }).join('; ');
+
+          var chartstuff = {
+              chartContainer: chartID,
+              chartDataKey: chartDataKey,
+              chartType: chartType,
+              chartHeight: 160,
+              chartData: chartData,
+              chartQualifier: chartQualifier,
+              chartChartTitle: chartChartTitle,
+              chartInitialSort: chartInitialSort,
+              chartStatType: chartStatType,
+              geographyData: geographyData,
+              chartColorScale: 'Kat2',
+              release: chartRelease
+          }
+          try {
+              Charts[i] = Chart(chartstuff);
+          } catch(e) {
+              console.log(e);
+              console.log("Error making chart " + chartID)
+              console.log(chartstuff);
+          }
+
+          // build array of releases used on this page for citations
+          if (noteRelease) { releases.push(noteRelease) }
+      });
+  }
+  makeCharts();
+
+  // listen for resize, redraw charts to new dimensions
+  var lazyRedrawCharts = _.debounce(function() {
+      window.browserWidth = document.documentElement.clientWidth;
+      window.browserHeight = document.documentElement.clientHeight;
+      makeCharts();
+  }, 50);
+  $(window).resize(lazyRedrawCharts);
+
+</script>
+<script src="{{ STATIC_URL }}js/profile.topic.picker.js"></script>
