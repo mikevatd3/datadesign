@@ -4,3 +4,5 @@ db.sqlite3
 *.json
 *.prof
 keys.toml
+env/bin env/include env/lib env/lib64 env/pyvenv.cfg
+env
