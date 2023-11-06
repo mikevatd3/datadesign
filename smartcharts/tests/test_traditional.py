@@ -1,8 +1,6 @@
-import json
 import math
 from django.test import TestCase
-from django.http import HttpRequest
-from .metadata import (
+from ..metadata import (
     TableMetadataRequest,
     TimeFrame,
     ComparisonType,
@@ -11,14 +9,13 @@ from .metadata import (
 
 from lesp.core import execute
 
-from .models import StatList, ColumnWidth, DataPoint, Row, Section, Profile
-from .api_client.geography import Geography
-from .saturate import saturate_datapoint
-from .saturate.namespace import Namespace
-from .saturate.datatypes import Estimate
-from .profile import geo_profile, ProfileRequest
-from .views import geography_profile, over_time_geography_profile
-from .api_client import ApiClient
+from ..models import StatList, ColumnWidth, DataPoint, Row, Section, Profile
+from ..api_client.geography import Geography
+from ..saturate import saturate_datapoint
+from ..saturate.namespace import Namespace
+from ..saturate.datatypes import Estimate
+from ..profile import geo_profile, ProfileRequest
+from ..api_client import ApiClient
 
 
 class TestSmartCharts(TestCase):

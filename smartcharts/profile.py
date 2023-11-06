@@ -1,6 +1,8 @@
 import time
+from enum import Enum, auto
 from dataclasses import dataclass
 from django.conf import settings
+from returns.result import Result, Success, Failure
 
 from .models import get_profile_template
 from .metadata import TimeFrame
@@ -15,7 +17,11 @@ class ProfileRequest:
     type: str = "single"
 
 
-def geo_profile(request: ProfileRequest):
+class ProfileFailureModes(Enum):
+    NO_PROFILE_AVAILABLE = auto()
+
+
+def geo_profile(request: ProfileRequest) -> Result:
     """
     [TEMPLATE] -| get_shopping_list |-> 
     [PROFILE TREE] -| fill_metadata_pool |->
@@ -27,6 +33,8 @@ def geo_profile(request: ProfileRequest):
 
     api_client = ApiClient(settings.API_URL)
     profile_template = get_profile_template()
+    if profile_template is None:
+        return Failure(ProfileFailureModes.NO_PROFILE_AVAILABLE)
     
     print(f"template loaded at {round(time.monotonic() - start, 4)}s")
     
@@ -55,7 +63,7 @@ def geo_profile(request: ProfileRequest):
     
     print(f"profile filled at {round(time.monotonic() - start, 4)}s")
 
-    return profile
+    return Success(profile)
 
 
 """

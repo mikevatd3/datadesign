@@ -267,7 +267,7 @@ class StatList(DataDesign):
         }
 
 
-class ColumnChartManager(PolymorphicModel):
+class ColumnChartManager(PolymorphicManager):
     def get_queryset(self):
         return super().get_queryset().select_related("columns")
 

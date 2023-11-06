@@ -2,8 +2,9 @@ import logging
 from django.conf import settings
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import render
+from returns.result import Success, Failure
 
-from .profile import ProfileRequest, geo_profile, enhance_api_data
+from .profile import ProfileRequest, geo_profile, enhance_api_data, ProfileFailureModes
 from .performance_profile import measure_performance
 from .build_manager import GeoProfileBuilder
 from .s3handler import S3Handler
@@ -53,17 +54,23 @@ def geography_profile(request):
     profile_builder = bob_the_builder()
 
     # Build the profile!
-    profile = profile_builder.build_geoid(new_request)
+    profile_result = profile_builder.build_geoid(new_request)
 
-    # This stuff maybe can be factored out to some obj to pass around.
-    profile.update(
-        {
-            "ACS_YEAR_NUMERIC": settings.ACS_YEAR_NUMERIC,
-            "API_URL": settings.API_URL,
-        }
-    )
+    match profile_result:
+        case Failure(fail_reason):
+            match fail_reason:
+                case _:
+                    raise Exception
+        case Success(profile):
+            # This stuff maybe can be factored out to some obj to pass around.
+            profile.update(
+                {
+                    "ACS_YEAR_NUMERIC": settings.ACS_YEAR_NUMERIC,
+                    "API_URL": settings.API_URL,
+                }
+            )
 
-    return render(request, 'smartcharts/profile.html', profile)
+            return render(request, 'smartcharts/profile.html', profile)
 
 
 def timeseries_geography_profile(_):

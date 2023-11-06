@@ -42,20 +42,19 @@ class S3Handler(CacheHandler):
         self.root_file = root_file
         self.profile_version = profile_version
 
-        if dont_check:
-            self.check_cache = self.dont_check_cache
-
-        if dont_update:
-            self.cache_profile = self.dont_cache_profile
-
-
-        if (not dont_check) & (not dont_update):
+        if (not dont_check) | (not dont_update):
             session = boto3.Session(
                 aws_access_key_id=aws_key,
                 aws_secret_access_key=aws_secret,
                 region_name="us-east-2",
             )
             self.s3 = session.resource("s3")
+
+        if dont_check:
+            self.check_cache = self.dont_check_cache
+
+        if dont_update:
+            self.cache_profile = self.dont_cache_profile
 
     def to_keyname(self, request: ProfileRequest):
         return f"1.0/data/{self.root_file}/{request.timeframe.value.lower()}/{request.geoid.upper()}"
@@ -68,21 +67,22 @@ class S3Handler(CacheHandler):
 
         try:
             s3_object.load()
-            profile_data = self.unpack_response(s3_object)
-
-            if profile_data.get("profile_version", "") == self.profile_version:
-                return Success(profile_data)
-
-            return Failure("The profile must be updated for this geoid.")
 
         except botocore.exceptions.ClientError as e:
             if e.response["Error"]["Code"] == "404":
                 return Failure("This geoid hasn't been cached for this year yet.")
             else:
                 return Failure("There is an error connecting to S3.")
+        
+        profile_data = self.unpack_response(s3_object)
 
-    def unpack_response(self, s3_request):
-        buffer = BytesIO(s3_request.get()["Body"].read())
+        if profile_data.get("profile_version", "") == self.profile_version:
+            return Success(profile_data)
+
+        return Failure("The profile must be updated for this geoid.")
+
+    def unpack_response(self, s3_object):
+        buffer = BytesIO(s3_object.get()["Body"].read())
 
         compressed = gzip.GzipFile(fileobj=buffer)
 
@@ -92,7 +92,6 @@ class S3Handler(CacheHandler):
 
         # Load it into a Python dict for the template
         profile_data = json.loads(profile_data_json)
-
         profile_data["profile_data_json"] = SafeString(profile_data_json)
 
         return profile_data
@@ -102,14 +101,12 @@ class S3Handler(CacheHandler):
 
     def cache_profile(self, request: ProfileRequest, profile: dict):
         s3_object = self.s3.Object(self.servername, self.to_keyname(request))
-
         profile.update({"profile_version": self.profile_version})
-
         profile_json = json.dumps(profile)
 
         self.write_profile_json(s3_object, profile_json, request)
 
-    def write_profile_json(self, s3_request, profile_json, request: ProfileRequest):
+    def write_profile_json(self, s3_object, profile_json, request: ProfileRequest):
         data_as_bytes = str.encode(profile_json)
 
         # create gzipped version of json in memory
@@ -122,7 +119,7 @@ class S3Handler(CacheHandler):
         memfile.seek(0)
 
         # store static version on S3
-        s3_request.put(
+        s3_object.put(
             Body=memfile,
             ContentType="application/json",
             ContentEncoding="gzip",

@@ -20,8 +20,8 @@ from smartcharts.views import homepage
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("/", homepage, name="homepage"),
-    path("/table_search", homepage, name="table_search"),
-    path("/glossary", homepage, name="glossary"),
+    path("", homepage, name="homepage"),
+    path("table_search", homepage, name="table_search"),
+    path("glossary", homepage, name="glossary"),
     path("profiles/", include("smartcharts.urls"))
 ]

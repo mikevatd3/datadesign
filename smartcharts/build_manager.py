@@ -27,11 +27,10 @@ class GeoProfileBuilder:
 
         match result:
             case Success(profile):
-
                 return profile
 
             case Failure(message):
-                self.logger.warn(message)
+                self.logger.warning(message)
                 profile = self.run_builder(request)
                 self.cache_handler.cache_profile(request, profile)
 
@@ -66,13 +65,4 @@ class GeoProfileBuilder:
         This will send a partial list of calculations to create
         at create_profile, and then it will.
         """
-
-
-class CustomProfileBuilder:
-    """
-    This will be the builder that accepts a list of geoids
-    instead of a single geoid. This will make it possible to
-    send out for geoids that haven't been cached yet, and to
-    do those calls asynchronously down the road.
-    """
 
